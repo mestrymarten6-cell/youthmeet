@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>مخطط اجتماع الشباب</title>
+<style>
+:root{--bg:#f7f5f0;--card:#fff;--tx:#1f2430;--mu:#6b7280;--ac:#2f6f6a;--ac2:#e3f0ee;--bd:#e2ded5;--dn:#b42318;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#15181d;--card:#1e232b;--tx:#e8eaee;--mu:#9aa3b0;--ac:#5fb3ab;--ac2:#20343a;--bd:#2f3640;--dn:#f97066}}
+:root[data-theme="dark"]{--bg:#15181d;--card:#1e232b;--tx:#e8eaee;--mu:#9aa3b0;--ac:#5fb3ab;--ac2:#20343a;--bd:#2f3640;--dn:#f97066}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:var(--bg);color:var(--tx);font-family:"Segoe UI",Tahoma,"Noto Naskh Arabic",Arial,sans-serif;line-height:1.6}
+.w{max-width:900px;margin:0 auto;padding:16px}
+h1{font-size:1.5rem;margin:8px 0}h2{font-size:1.1rem;margin:22px 0 8px;color:var(--ac)}
+.sub{color:var(--mu);font-size:.9rem;margin-bottom:8px}
+.g{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px}
+.c{background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:12px;cursor:pointer;text-align:start;color:inherit;font:inherit;min-height:84px}
+.c:hover{border-color:var(--ac)}
+.d{font-weight:700;font-size:.95rem}
+.t{margin-top:6px;font-size:.9rem}.t div{padding:2px 0}
+.e{color:var(--mu);font-size:.85rem}
+.b{display:inline-block;background:var(--ac2);color:var(--ac);border-radius:8px;padding:0 6px;font-size:.75rem;margin-inline-end:4px}
+button.p,button.s{border-radius:8px;border:1px solid var(--ac);padding:6px 12px;font:inherit;cursor:pointer}
+button.p{background:var(--ac);color:#fff}button.s{background:transparent;color:var(--ac)}
+button.x{background:none;border:0;color:var(--dn);cursor:pointer;font:inherit}
+input[type=text],textarea{width:100%;box-sizing:border-box;background:var(--bg);color:var(--tx);border:1px solid var(--bd);border-radius:8px;padding:8px;font:inherit}
+textarea{min-height:70px}
+.tp{background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:12px;margin:12px 0}
+.tp h3{margin:0 0 8px}.sec{margin-top:10px}.sec b{font-size:.85rem;color:var(--mu)}
+.row{display:flex;gap:6px;margin-top:4px;align-items:center;flex-wrap:wrap}.row input[type=text]{flex:1;min-width:140px}
+.im{display:flex;flex-wrap:wrap;gap:8px}.im img{max-width:140px;max-height:110px;border-radius:8px;border:1px solid var(--bd)}
+.li{display:flex;justify-content:space-between;gap:8px;padding:3px 0;border-bottom:1px dashed var(--bd);word-break:break-all}
+a{color:var(--ac)}.msg{color:var(--dn);font-size:.85rem}
+</style></head><body><div class="w" id="app"></div>
+<script>
+const START=new Date(2026,10,5),WEEKS=26;
+const dates=[];for(let i=0;i<WEEKS;i++){const d=new Date(START);d.setDate(5+i*7);if(d>new Date(2027,3,30))break;dates.push(d)}
+const key=d=>d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
+const fmt=(d,o)=>d.toLocaleDateString("ar-u-nu-latn",o);
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const isUrl=s=>/^https?:\/\//i.test(s);
+const lnk=s=>isUrl(s)?`<a href="${esc(s)}" target="_blank" rel="noopener">${esc(s)}</a>`:esc(s);
+let data={},cur=null,db=null,assets=null,msg="";
+try{data=JSON.parse(localStorage.getItem("yp")||"{}")}catch(e){}
+const day=k=>data[k]||(data[k]={topics:[]});
+const POOL="_pool";
+async function save(...ks){
+  try{localStorage.setItem("yp",JSON.stringify(data))}catch(e){}
+  if(db){try{for(const k of ks)await db.doc("meetings/"+k).set(day(k));msg=""}catch(e){msg="تعذّر الحفظ على السيرفر: "+(e.message||e.code)}}
+  render()}
+function render(){
+  const a=document.getElementById("app");
+  if(cur){a.innerHTML=detail(cur);return}
+  let h=`<h1>مخطط اجتماع الشباب</h1><div class="sub">كل يوم خميس من نوفمبر 2026 حتى أبريل 2027 — اضغط على أي يوم لإضافة التفاصيل</div>`;
+  const pool=day(POOL).topics;
+  const opts=dates.map(d=>`<option value="${key(d)}">${fmt(d,{day:"numeric",month:"short"})} — ${fmt(d,{weekday:"long"})}</option>`).join("");
+  h+=`<div class="tp"><h3>بنك المواضيع</h3><div class="sub">ضيف هنا كل المواضيع المقترحة، وبعدين وزّعها على أي خميس تحبه</div>`;
+  h+=pool.length?pool.map((t,i)=>`<div class="row"><button class="s" data-poolopen="${i}" style="flex:1;text-align:start">${esc(t.t)}</button><select data-assignsel="${i}">${opts}</select><button class="s" data-assign="${i}">توزيع</button><button class="x" data-poolrm="${i}">حذف</button></div>`).join(""):`<div class="e">لا توجد مواضيع في البنك بعد</div>`;
+  h+=`<div class="row"><input type="text" id="pt" placeholder="اسم موضوع جديد"><button class="p" data-pooladd>إضافة للبنك</button></div></div>`;
+  let m="";
+  for(const d of dates){
+    const mm=fmt(d,{month:"long",year:"numeric"});
+    if(mm!==m){if(m)h+="</div>";m=mm;h+=`<h2>${mm}</h2><div class="g">`}
+    const k=key(d),ts=(data[k]&&data[k].topics)||[];
+    h+=`<button class="c" data-open="${k}"><div class="d">${fmt(d,{weekday:"long",day:"numeric",month:"short"})}</div><div class="t">${ts.length?ts.map(t=>`<div>• ${esc(t.t)}</div>`).join(""):'<span class="e">لم يُحدد موضوع بعد</span>'}</div></button>`}
+  a.innerHTML=h+"</div>"+(msg?`<p class="msg">${esc(msg)}</p>`:"")}
+function detail(k){
+  const isPool=k===POOL;
+  const ts=day(k).topics;
+  const opts=dates.map(d=>`<option value="${key(d)}">${fmt(d,{day:"numeric",month:"short"})} — ${fmt(d,{weekday:"long"})}</option>`).join("");
+  let h=`<button class="s" data-back>→ رجوع للمخطط</button>`;
+  if(isPool)h+=`<h1>بنك المواضيع</h1><div class="sub">جهّز بيانات الموضوع بالكامل هنا، وبعدين وزّعه على أي خميس فيتنقل معاه كل حاجة</div>`;
+  else{const [y,mo,da]=k.split("-").map(Number),d=new Date(y,mo-1,da);h+=`<h1>${fmt(d,{weekday:"long",day:"numeric",month:"long",year:"numeric"})}</h1>`}
+  ts.forEach((t,i)=>{
+    const list=(arr,kind,f)=>(arr||[]).map((x,j)=>`<div class="li"><span>${f(x)}</span><button class="x" data-del="${kind}:${i}:${j}">حذف</button></div>`).join("");
+    h+=`<div class="tp"><h3><input type="text" data-title="${i}" value="${esc(t.t)}"></h3>
+    <div class="sec"><b>ملاحظات / تحضير / معلومات</b><textarea data-note="${i}">${esc(t.note||"")}</textarea></div>
+    <div class="sec"><b>روابط فيديوهات</b>${list(t.vids,"vids",lnk)}<div class="row"><input type="text" placeholder="الصق رابط الفيديو" data-in="vids:${i}"><button class="s" data-add="vids:${i}">إضافة</button></div></div>
+    <div class="sec"><b>كتب ومصادر</b>${list(t.books,"books",lnk)}<div class="row"><input type="text" placeholder="اسم الكتاب أو رابط" data-in="books:${i}"><button class="s" data-add="books:${i}">إضافة</button></div></div>
+    <div class="sec"><b>صور</b><div class="im">${(t.imgs||[]).map((x,j)=>`<div><img src="/_blob/${esc(x.id)}" alt=""><br><button class="x" data-del="imgs:${i}:${j}">حذف</button></div>`).join("")}</div>
+    ${assets?`<div class="row"><input type="file" accept="image/*" multiple data-up="imgs:${i}"></div>`:""}</div>
+    <div class="sec"><b>ملفات Word / PDF</b>${list(t.files,"files",x=>`<a href="/_blob/${esc(x.id)}" target="_blank" rel="noopener">${esc(x.name)}</a>`)}
+    ${assets?`<div class="row"><input type="file" accept=".pdf,.doc,.docx" multiple data-up="files:${i}"></div>`:'<div class="e">رفع الملفات غير متاح حاليًا — ضيف رابط الملف في خانة المصادر.</div>'}</div>
+    ${isPool?`<div class="row"><span>توزيع على:</span><select data-assignsel="${i}">${opts}</select><button class="s" data-assign="${i}">توزيع</button></div>`:""}
+    <div class="row"><button class="x" data-deltopic="${i}">حذف الموضوع</button></div></div>`});
+  h+=`<div class="tp"><b>إضافة موضوع ${isPool?"للبنك":"مقترح"}</b><div class="row"><input type="text" id="nt" placeholder="اسم الموضوع"><button class="p" data-addtopic>إضافة</button></div></div>`;
+  return h+(msg?`<p class="msg">${esc(msg)}</p>`:"")}
+document.addEventListener("click",async e=>{
+  const g=a=>e.target.closest("["+a+"]");let n;
+  if(n=g("data-open")){cur=n.dataset.open;render();window.scrollTo(0,0)}
+  else if(g("data-back")){cur=null;render()}
+  else if(g("data-addtopic")){const v=document.getElementById("nt").value.trim();if(v){day(cur).topics.push({t:v,note:"",vids:[],books:[],imgs:[],files:[]});save(cur)}}
+  else if(n=g("data-add")){const[kind,i]=n.dataset.add.split(":");const inp=document.querySelector(`[data-in="${kind}:${i}"]`),v=inp.value.trim();if(v){const t=day(cur).topics[i];(t[kind]=t[kind]||[]).push(v);save(cur)}}
+  else if(n=g("data-del")){const[kind,i,j]=n.dataset.del.split(":");day(cur).topics[i][kind].splice(+j,1);save(cur)}
+  else if(n=g("data-deltopic")){if(confirm("حذف الموضوع؟")){day(cur).topics.splice(+n.dataset.deltopic,1);save(cur)}}
+  else if(g("data-pooladd")){const inp=document.getElementById("pt"),v=inp.value.trim();if(v){day(POOL).topics.push({t:v,note:"",vids:[],books:[],imgs:[],files:[]});save(POOL)}}
+  else if(n=g("data-poolopen")){cur=POOL;render();window.scrollTo(0,0)}
+  else if(n=g("data-poolrm")){day(POOL).topics.splice(+n.dataset.poolrm,1);save(POOL)}
+  else if(n=g("data-assign")){
+    const i=+n.dataset.assign,sel=document.querySelector(`[data-assignsel="${i}"]`),k=sel.value,t=day(POOL).topics[i];
+    if(t){day(k).topics.push(JSON.parse(JSON.stringify(t)));day(POOL).topics.splice(i,1);if(cur===POOL)cur=null;save(POOL,k)}}
+});
+document.addEventListener("change",async e=>{
+  const t=e.target;
+  if(t.dataset.title!==undefined){day(cur).topics[t.dataset.title].t=t.value;save(cur)}
+  else if(t.dataset.note!==undefined){day(cur).topics[t.dataset.note].note=t.value;save(cur)}
+  else if(t.dataset.up){
+    const[kind,i]=t.dataset.up.split(":"),tp=day(cur).topics[i];
+    for(const f of t.files){try{const r=await assets.upload(f);(tp[kind]=tp[kind]||[]).push(kind==="imgs"?{id:r.id}:{id:r.id,name:f.name})}catch(er){msg="تعذّر رفع "+f.name+": "+(er.message||er.code)}}
+    save(cur)}
+});
+(async()=>{
+  render();
+  try{assets=await claude.use("assets")}catch(e){}
+  try{db=await claude.use("db")}catch(e){}
+  if(db){try{db.collection("meetings").onSnapshot(s=>{s.docs.forEach(x=>{data[x.id]=x.data()});
+    const ae=document.activeElement;if(!(ae&&/INPUT|TEXTAREA/.test(ae.tagName)&&ae.value))render()},()=>{})}catch(e){}}
+  render()})();
+</script></body></html>
