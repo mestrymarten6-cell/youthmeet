@@ -81,9 +81,10 @@ if(db){
 
 // ---------- الواجهة ----------
 function stat(){return status==="ok"?'<span class="st ok">● متصل — التعديلات بتظهر للكل</span>':status==="error"?'<span class="st bad">● غير متصل</span>':'<span class="st">● جاري الاتصال...</span>'}
-function dayOpts(){return dates.map(d=>`<option value="${key(d)}">${fmt(d,{day:"numeric",month:"short"})} — ${fmt(d,{weekday:"long"})}</option>`).join("")}
+function dayOpts(skip){return dates.filter(d=>key(d)!==skip).map(d=>`<option value="${key(d)}">${fmt(d,{day:"numeric",month:"short"})} — ${fmt(d,{weekday:"long"})}</option>`).join("")}
 
 function render(){
+  armed=null;
   const a=document.getElementById("app");
   if(cur){a.innerHTML=detail(cur);return}
   const pool=day(POOL).topics,opts=dayOpts();
@@ -115,10 +116,19 @@ function detail(k){
     <div class="sec"><b>صور</b><div class="im">${(t.imgs||[]).map((x,j)=>`<div>${isUrl(x)?`<a href="${esc(x)}" target="_blank" rel="noopener"><img src="${esc(x)}" alt="" loading="lazy" onerror="this.replaceWith(Object.assign(document.createElement('span'),{textContent:'رابط صورة غير صالح'}))"></a>`:esc(x)}<br><button class="x" data-del="imgs:${i}:${j}">حذف</button></div>`).join("")}</div>
     <div class="row"><input type="text" placeholder="الصق رابط صورة (jpg/png...)" data-in="imgs:${i}"><button class="s" data-add="imgs:${i}">إضافة</button></div></div>
     <div class="sec"><b>ملفات Word / PDF</b>${list(t.files,"files",lnk)}<div class="row"><input type="text" placeholder="الصق رابط الملف (Drive, OneDrive...)" data-in="files:${i}"><button class="s" data-add="files:${i}">إضافة</button></div></div>
-    ${isPool?`<div class="row"><span>توزيع على:</span><select data-assignsel="${i}">${opts}</select><button class="s" data-assign="${i}">توزيع</button></div>`:""}
+    ${isPool?`<div class="row"><span>توزيع على:</span><select data-assignsel="${i}">${opts}</select><button class="s" data-assign="${i}">توزيع</button></div>`
+      :`<div class="row"><span>نقل إلى:</span><select data-movesel="${i}">${dayOpts(k)}</select><button class="s" data-move="${i}">نقل</button><button class="s" data-return="${i}">إرجاع للبنك</button></div>`}
     <div class="row"><button class="x" data-deltopic="${i}">حذف الموضوع</button></div></div>`});
   h+=`<div class="tp"><b>إضافة موضوع ${isPool?"للبنك":"مقترح"}</b><div class="row"><input type="text" id="nt" placeholder="اسم الموضوع"><button class="p" data-addtopic>إضافة</button></div></div>`;
   return h+(msg?`<p class="msg">${esc(msg)}</p>`:"")}
+
+// ---------- تأكيد الحذف بضغطتين (بدل نافذة confirm اللي بتتحجب في بعض المتصفحات) ----------
+let armed=null;
+function arm(btn,id){
+  if(armed===id){armed=null;return true}
+  armed=id;const old=btn.textContent;btn.textContent="اضغط تاني للتأكيد";
+  setTimeout(()=>{if(armed===id){armed=null;btn.textContent=old}},4000);
+  return false}
 
 // ---------- الأحداث ----------
 document.addEventListener("click",e=>{
@@ -129,13 +139,19 @@ document.addEventListener("click",e=>{
     else if(g("data-addtopic")){const v=document.getElementById("nt").value.trim();if(v){const t=day(cur).topics;t.push(blank(v));save(cur)}}
     else if(n=g("data-add")){const[kind,i]=n.dataset.add.split(":");const v=document.querySelector(`[data-in="${kind}:${i}"]`).value.trim();if(v){const t=day(cur).topics[i];(t[kind]=t[kind]||[]).push(v);save(cur)}}
     else if(n=g("data-del")){const[kind,i,j]=n.dataset.del.split(":");day(cur).topics[i][kind].splice(+j,1);save(cur)}
-    else if(n=g("data-deltopic")){if(confirm("حذف الموضوع؟")){day(cur).topics.splice(+n.dataset.deltopic,1);save(cur)}}
+    else if(n=g("data-deltopic")){if(arm(n,"d"+n.dataset.deltopic)){day(cur).topics.splice(+n.dataset.deltopic,1);save(cur)}}
     else if(g("data-pooladd")){const v=document.getElementById("pt").value.trim();if(v){day(POOL).topics.push(blank(v));save(POOL)}}
     else if(n=g("data-poolopen")){cur=POOL;render();window.scrollTo(0,0)}
-    else if(n=g("data-poolrm")){if(confirm("حذف الموضوع من البنك؟")){day(POOL).topics.splice(+n.dataset.poolrm,1);save(POOL)}}
+    else if(n=g("data-poolrm")){if(arm(n,"p"+n.dataset.poolrm)){day(POOL).topics.splice(+n.dataset.poolrm,1);save(POOL)}}
     else if(n=g("data-assign")){
       const i=+n.dataset.assign,k=document.querySelector(`[data-assignsel="${i}"]`).value,t=day(POOL).topics[i];
       if(t){day(k).topics.push(JSON.parse(JSON.stringify(t)));day(POOL).topics.splice(i,1);if(cur===POOL)cur=null;save(POOL,k)}}
+    else if(n=g("data-move")){
+      const i=+n.dataset.move,k2=document.querySelector(`[data-movesel="${i}"]`).value,from=cur;
+      if(k2&&day(from).topics[i]){const t=day(from).topics.splice(i,1)[0];day(k2).topics.push(t);save(from,k2)}}
+    else if(n=g("data-return")){
+      const i=+n.dataset.return,from=cur;
+      if(day(from).topics[i]){const t=day(from).topics.splice(i,1)[0];day(POOL).topics.push(t);save(from,POOL)}}
     else if(g("data-migrate")){migrate()}
   }catch(err){msg="حصل خطأ: "+(err.message||err);render()}
 });
