@@ -27,11 +27,13 @@ textarea{min-height:70px}
 .row{display:flex;gap:6px;margin-top:6px;align-items:center;flex-wrap:wrap}.row input[type=text]{flex:1;min-width:140px;width:auto}
 .im{display:flex;flex-wrap:wrap;gap:8px}.im img{max-width:140px;max-height:110px;border-radius:8px;border:1px solid var(--bd)}
 .li{display:flex;justify-content:space-between;gap:8px;padding:3px 0;border-bottom:1px dashed var(--bd);word-break:break-all}
+.note{white-space:pre-wrap}
 a{color:var(--ac)}.msg{color:var(--dn);font-size:.85rem}
 .st{font-size:.8rem;color:var(--mu)}.st.ok{color:var(--ac)}.st.bad{color:var(--dn)}
 </style></head><body><div class="w"><div id="app"></div></div>
 
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <script>
 const firebaseConfig={
@@ -42,10 +44,12 @@ const firebaseConfig={
   messagingSenderId:"511442545905",
   appId:"1:511442545905:web:616c54f8ec4c7f754c8d50"
 };
+// الحسابات المسموح لها بالتعديل (الحماية الفعلية في قواعد Firestore)
+const EDITORS=["beshoynazmy04@gmail.com"];
 
 // ---------- التواريخ: كل خميس من 5 نوفمبر 2026 لمدة 6 شهور ----------
 const dates=[];
-for(let i=0;i<26;i++){const d=new Date(2026,10,5+i*7);dates.push(d)}
+for(let i=0;i<26;i++){dates.push(new Date(2026,10,5+i*7))}
 const key=d=>d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
 const fmt=(d,o)=>d.toLocaleDateString("ar-u-nu-latn",o);
 const esc=s=>String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
@@ -54,17 +58,19 @@ const lnk=s=>isUrl(s)?`<a href="${esc(s)}" target="_blank" rel="noopener">${esc(
 
 // ---------- الحالة ----------
 const POOL="_pool";
-let data={},cur=null,msg="",status="connecting",pending=false,db=null;
+let data={},cur=null,msg="",status="connecting",db=null,auth=null,user=null,armed=null;
 const day=k=>data[k]||(data[k]={topics:[]});
 const blank=t=>({t,note:"",vids:[],books:[],imgs:[],files:[]});
+const canEdit=()=>!!(user&&user.email&&EDITORS.includes(user.email.toLowerCase()));
 
-try{firebase.initializeApp(firebaseConfig);db=firebase.firestore()}catch(e){status="error";msg="تعذّر الاتصال بـ Firebase: "+(e.message||e)}
+try{firebase.initializeApp(firebaseConfig);db=firebase.firestore();auth=firebase.auth()}
+catch(e){status="error";msg="تعذّر الاتصال بـ Firebase: "+(e.message||e)}
 
 function save(...ks){
   if(db){
     for(const k of ks){
       db.collection("meetings").doc(k).set({topics:day(k).topics})
-        .catch(err=>{msg="تعذّر الحفظ: "+(err.code||err.message);render()})
+        .catch(err=>{msg="تعذّر الحفظ (الصلاحيات): "+(err.code||err.message);render()})
     }
   }
   render()}
@@ -74,24 +80,37 @@ function dirty(){return [...document.querySelectorAll("#app input[type=text],#ap
 if(db){
   db.collection("meetings").onSnapshot(s=>{
     data={};s.docs.forEach(d=>{data[d.id]=d.data()});
-    status="ok";msg="";
-    if(dirty()){pending=true}else{pending=false;render()}
+    status="ok";
+    if(!dirty())render()
   },err=>{status="error";msg="مشكلة في الاتصال/الصلاحيات: "+(err.code||err.message);render()});
 }
+if(auth){auth.onAuthStateChanged(u=>{user=u;render()})}
+
+function login(){
+  const p=new firebase.auth.GoogleAuthProvider();p.setCustomParameters({prompt:"select_account"});
+  auth.signInWithPopup(p).catch(e=>{msg="تعذّر تسجيل الدخول: "+(e.code||e.message);render()})}
 
 // ---------- الواجهة ----------
-function stat(){return status==="ok"?'<span class="st ok">● متصل — التعديلات بتظهر للكل</span>':status==="error"?'<span class="st bad">● غير متصل</span>':'<span class="st">● جاري الاتصال...</span>'}
-function dayOpts(skip){return dates.filter(d=>key(d)!==skip).map(d=>`<option value="${key(d)}">${fmt(d,{day:"numeric",month:"short"})} — ${fmt(d,{weekday:"long"})}</option>`).join("")}
+function stat(){return status==="ok"?'<span class="st ok">● متصل</span>':status==="error"?'<span class="st bad">● غير متصل</span>':'<span class="st">● جاري الاتصال...</span>'}
+function authBar(){
+  if(!auth)return"";
+  if(!user)return `<div class="row"><button class="p" data-login>🔒 تسجيل دخول للتعديل</button><span class="st">وضع العرض فقط</span></div>`;
+  if(canEdit())return `<div class="row"><span class="st ok">✏️ وضع التعديل — ${esc(user.email)}</span><button class="s" data-logout>خروج</button></div>`;
+  return `<div class="row"><span class="msg">الحساب ${esc(user.email)} غير مصرح له بالتعديل</span><button class="s" data-logout>خروج</button></div>`}
+function dayOpts(skip){return '<option value="">— اختر اليوم —</option>'+dates.filter(d=>key(d)!==skip).map(d=>`<option value="${key(d)}">${fmt(d,{day:"numeric",month:"short"})} — ${fmt(d,{weekday:"long"})}</option>`).join("")}
 
 function render(){
   armed=null;
-  const a=document.getElementById("app");
-  if(cur){a.innerHTML=detail(cur);return}
-  const pool=day(POOL).topics,opts=dayOpts();
-  let h=`<h1>مخطط اجتماع الشباب</h1><div class="sub">كل يوم خميس من نوفمبر 2026 حتى أبريل 2027 — اضغط على أي يوم لإضافة التفاصيل</div>${stat()}`;
-  h+=`<div class="tp"><h3>بنك المواضيع</h3><div class="sub">ضيف هنا كل المواضيع المقترحة، وبعدين وزّعها على أي خميس تحبه</div>`;
-  h+=pool.length?pool.map((t,i)=>`<div class="row"><button class="s" data-poolopen="${i}" style="flex:1;text-align:start">${esc(t.t)}</button><select data-assignsel="${i}">${opts}</select><button class="s" data-assign="${i}">توزيع</button><button class="x" data-poolrm="${i}">حذف</button></div>`).join(""):`<div class="e">لا توجد مواضيع في البنك بعد</div>`;
-  h+=`<div class="row"><input type="text" id="pt" placeholder="اسم موضوع جديد"><button class="p" data-pooladd>إضافة للبنك</button></div></div>`;
+  const a=document.getElementById("app"),ed=canEdit();
+  if(cur&&cur===POOL&&!ed)cur=null;
+  if(cur){a.innerHTML=detail(cur,ed);return}
+  let h=`<h1>مخطط اجتماع الشباب</h1><div class="sub">كل يوم خميس من نوفمبر 2026 حتى أبريل 2027 — اضغط على أي يوم لعرض التفاصيل</div>${stat()}${authBar()}`;
+  if(ed){
+    const pool=day(POOL).topics,opts=dayOpts();
+    h+=`<div class="tp"><h3>بنك المواضيع</h3><div class="sub">ضيف هنا كل المواضيع المقترحة، وبعدين وزّعها على أي خميس تحبه</div>`;
+    h+=pool.length?pool.map((t,i)=>`<div class="row"><button class="s" data-poolopen="${i}" style="flex:1;text-align:start">${esc(t.t)}</button><select data-assignsel="${i}">${opts}</select><button class="s" data-assign="${i}">توزيع</button><button class="x" data-poolrm="${i}">حذف</button></div>`).join(""):`<div class="e">لا توجد مواضيع في البنك بعد</div>`;
+    h+=`<div class="row"><input type="text" id="pt" placeholder="اسم موضوع جديد"><button class="p" data-pooladd>إضافة للبنك</button></div></div>`;
+  }
   let m="";
   for(const d of dates){
     const mm=fmt(d,{month:"long",year:"numeric"});
@@ -99,44 +118,56 @@ function render(){
     const k=key(d),ts=(data[k]&&data[k].topics)||[];
     h+=`<button class="c" data-open="${k}"><div class="d">${fmt(d,{weekday:"long",day:"numeric",month:"short"})}</div><div class="t">${ts.length?ts.map(t=>`<div>• ${esc(t.t)}</div>`).join(""):'<span class="e">لم يُحدد موضوع بعد</span>'}</div></button>`}
   h+="</div>";
-  if(localStorage.getItem("yp")&&db)h+=`<div class="tp"><div class="sub">لقينا بيانات قديمة محفوظة على الجهاز ده.</div><button class="s" data-migrate>نقلها للسحابة</button></div>`;
+  try{if(ed&&db&&localStorage.getItem("yp"))h+=`<div class="tp"><div class="sub">لقينا بيانات قديمة محفوظة على الجهاز ده.</div><button class="s" data-migrate>نقلها للسحابة</button></div>`}catch(e){}
   a.innerHTML=h+(msg?`<p class="msg">${esc(msg)}</p>`:"")}
 
-function detail(k){
-  const isPool=k===POOL,ts=day(k).topics,opts=dayOpts();
-  let h=`<button class="s" data-back>→ رجوع للمخطط</button> ${stat()}`;
+function detail(k,ed){
+  const isPool=k===POOL,ts=day(k).topics,opts=dayOpts(k);
+  let h=`<button class="s" data-back>→ رجوع للمخطط</button> ${stat()}${authBar()}`;
   if(isPool)h+=`<h1>بنك المواضيع</h1><div class="sub">جهّز بيانات الموضوع بالكامل هنا، وبعدين وزّعه على أي خميس فيتنقل معاه كل حاجة</div>`;
   else{const[y,mo,da]=k.split("-").map(Number);h+=`<h1>${fmt(new Date(y,mo-1,da),{weekday:"long",day:"numeric",month:"long",year:"numeric"})}</h1>`}
+  if(!ts.length&&!ed)h+=`<div class="e">لم يُحدد موضوع لهذا اليوم بعد</div>`;
   ts.forEach((t,i)=>{
-    const list=(arr,kind,f)=>(arr||[]).map((x,j)=>`<div class="li"><span>${f(x)}</span><button class="x" data-del="${kind}:${i}:${j}">حذف</button></div>`).join("");
-    h+=`<div class="tp"><h3><input type="text" data-title="${i}" value="${esc(t.t)}"></h3>
-    <div class="sec"><b>ملاحظات / تحضير / معلومات</b><textarea data-note="${i}">${esc(t.note||"")}</textarea></div>
-    <div class="sec"><b>روابط فيديوهات</b>${list(t.vids,"vids",lnk)}<div class="row"><input type="text" placeholder="الصق رابط الفيديو" data-in="vids:${i}"><button class="s" data-add="vids:${i}">إضافة</button></div></div>
-    <div class="sec"><b>كتب ومصادر</b>${list(t.books,"books",lnk)}<div class="row"><input type="text" placeholder="اسم الكتاب أو رابط" data-in="books:${i}"><button class="s" data-add="books:${i}">إضافة</button></div></div>
-    <div class="sec"><b>صور</b><div class="im">${(t.imgs||[]).map((x,j)=>`<div>${isUrl(x)?`<a href="${esc(x)}" target="_blank" rel="noopener"><img src="${esc(x)}" alt="" loading="lazy" onerror="this.replaceWith(Object.assign(document.createElement('span'),{textContent:'رابط صورة غير صالح'}))"></a>`:esc(x)}<br><button class="x" data-del="imgs:${i}:${j}">حذف</button></div>`).join("")}</div>
-    <div class="row"><input type="text" placeholder="الصق رابط صورة (jpg/png...)" data-in="imgs:${i}"><button class="s" data-add="imgs:${i}">إضافة</button></div></div>
-    <div class="sec"><b>ملفات Word / PDF</b>${list(t.files,"files",lnk)}<div class="row"><input type="text" placeholder="الصق رابط الملف (Drive, OneDrive...)" data-in="files:${i}"><button class="s" data-add="files:${i}">إضافة</button></div></div>
-    ${isPool?`<div class="row"><span>توزيع على:</span><select data-assignsel="${i}">${opts}</select><button class="s" data-assign="${i}">توزيع</button></div>`
-      :`<div class="row"><span>نقل إلى:</span><select data-movesel="${i}">${dayOpts(k)}</select><button class="s" data-move="${i}">نقل</button><button class="s" data-return="${i}">إرجاع للبنك</button></div>`}
-    <div class="row"><button class="x" data-deltopic="${i}">حذف الموضوع</button></div></div>`});
-  h+=`<div class="tp"><b>إضافة موضوع ${isPool?"للبنك":"مقترح"}</b><div class="row"><input type="text" id="nt" placeholder="اسم الموضوع"><button class="p" data-addtopic>إضافة</button></div></div>`;
+    const list=(arr,kind,f)=>(arr||[]).map((x,j)=>`<div class="li"><span>${f(x)}</span>${ed?`<button class="x" data-del="${kind}:${i}:${j}">حذف</button>`:""}</div>`).join("");
+    const add=(kind,ph)=>ed?`<div class="row"><input type="text" placeholder="${ph}" data-in="${kind}:${i}"><button class="s" data-add="${kind}:${i}">إضافة</button></div>`:"";
+    const has=a=>(a||[]).length>0;
+    h+=`<div class="tp">`;
+    h+=ed?`<h3><input type="text" data-title="${i}" value="${esc(t.t)}"></h3>`:`<h3>${esc(t.t)}</h3>`;
+    if(ed||t.note)h+=`<div class="sec"><b>ملاحظات / تحضير / معلومات</b>${ed?`<textarea data-note="${i}">${esc(t.note||"")}</textarea>`:`<div class="note">${esc(t.note)}</div>`}</div>`;
+    if(ed||has(t.vids))h+=`<div class="sec"><b>روابط فيديوهات</b>${list(t.vids,"vids",lnk)}${add("vids","الصق رابط الفيديو")}</div>`;
+    if(ed||has(t.books))h+=`<div class="sec"><b>كتب ومصادر</b>${list(t.books,"books",lnk)}${add("books","اسم الكتاب أو رابط")}</div>`;
+    if(ed||has(t.imgs))h+=`<div class="sec"><b>صور</b><div class="im">${(t.imgs||[]).map((x,j)=>`<div>${isUrl(x)?`<a href="${esc(x)}" target="_blank" rel="noopener"><img src="${esc(x)}" alt="" loading="lazy" onerror="this.replaceWith(Object.assign(document.createElement('span'),{textContent:'رابط صورة غير صالح'}))"></a>`:esc(x)}${ed?`<br><button class="x" data-del="imgs:${i}:${j}">حذف</button>`:""}</div>`).join("")}</div>${add("imgs","الصق رابط صورة (jpg/png...)")}</div>`;
+    if(ed||has(t.files))h+=`<div class="sec"><b>ملفات Word / PDF</b>${list(t.files,"files",lnk)}${add("files","الصق رابط الملف (Drive, OneDrive...)")}</div>`;
+    if(ed){
+      h+=isPool?`<div class="row"><span>توزيع على:</span><select data-assignsel="${i}">${opts}</select><button class="s" data-assign="${i}">توزيع</button></div>`
+        :`<div class="row"><span>نقل إلى:</span><select data-movesel="${i}">${opts}</select><button class="s" data-move="${i}">نقل</button><button class="s" data-return="${i}">إرجاع للبنك</button></div>`;
+      h+=`<div class="row"><button class="x" data-deltopic="${i}">حذف الموضوع</button></div>`;
+    }
+    h+=`</div>`});
+  if(ed){
+    if(!isPool&&ts.length>1)h+=`<div class="tp"><button class="s" data-returnall>إرجاع كل مواضيع اليوم للبنك</button></div>`;
+    h+=`<div class="tp"><b>إضافة موضوع ${isPool?"للبنك":"مقترح"}</b><div class="row"><input type="text" id="nt" placeholder="اسم الموضوع"><button class="p" data-addtopic>إضافة</button></div></div>`;
+  }
   return h+(msg?`<p class="msg">${esc(msg)}</p>`:"")}
 
-// ---------- تأكيد الحذف بضغطتين (بدل نافذة confirm اللي بتتحجب في بعض المتصفحات) ----------
-let armed=null;
+// ---------- تأكيد الحذف بضغطتين ----------
 function arm(btn,id){
   if(armed===id){armed=null;return true}
   armed=id;const old=btn.textContent;btn.textContent="اضغط تاني للتأكيد";
   setTimeout(()=>{if(armed===id){armed=null;btn.textContent=old}},4000);
   return false}
+function need(btn){const old=btn.textContent;btn.textContent="اختر اليوم أولًا";setTimeout(()=>{btn.textContent=old},2000)}
 
 // ---------- الأحداث ----------
 document.addEventListener("click",e=>{
   try{
     const g=a=>e.target.closest("["+a+"]");let n;
-    if(n=g("data-open")){cur=n.dataset.open;render();window.scrollTo(0,0)}
-    else if(g("data-back")){cur=null;render()}
-    else if(g("data-addtopic")){const v=document.getElementById("nt").value.trim();if(v){const t=day(cur).topics;t.push(blank(v));save(cur)}}
+    if(n=g("data-open")){cur=n.dataset.open;msg="";render();window.scrollTo(0,0)}
+    else if(g("data-back")){cur=null;msg="";render()}
+    else if(g("data-login")){login()}
+    else if(g("data-logout")){auth.signOut()}
+    else if(!canEdit()){return}
+    else if(g("data-addtopic")){const v=document.getElementById("nt").value.trim();if(v){day(cur).topics.push(blank(v));save(cur)}}
     else if(n=g("data-add")){const[kind,i]=n.dataset.add.split(":");const v=document.querySelector(`[data-in="${kind}:${i}"]`).value.trim();if(v){const t=day(cur).topics[i];(t[kind]=t[kind]||[]).push(v);save(cur)}}
     else if(n=g("data-del")){const[kind,i,j]=n.dataset.del.split(":");day(cur).topics[i][kind].splice(+j,1);save(cur)}
     else if(n=g("data-deltopic")){if(arm(n,"d"+n.dataset.deltopic)){day(cur).topics.splice(+n.dataset.deltopic,1);save(cur)}}
@@ -145,18 +176,22 @@ document.addEventListener("click",e=>{
     else if(n=g("data-poolrm")){if(arm(n,"p"+n.dataset.poolrm)){day(POOL).topics.splice(+n.dataset.poolrm,1);save(POOL)}}
     else if(n=g("data-assign")){
       const i=+n.dataset.assign,k=document.querySelector(`[data-assignsel="${i}"]`).value,t=day(POOL).topics[i];
-      if(t){day(k).topics.push(JSON.parse(JSON.stringify(t)));day(POOL).topics.splice(i,1);if(cur===POOL)cur=null;save(POOL,k)}}
+      if(!k){need(n);return}
+      if(t){day(k).topics.push(JSON.parse(JSON.stringify(t)));day(POOL).topics.splice(i,1);save(POOL,k)}}
     else if(n=g("data-move")){
       const i=+n.dataset.move,k2=document.querySelector(`[data-movesel="${i}"]`).value,from=cur;
-      if(k2&&day(from).topics[i]){const t=day(from).topics.splice(i,1)[0];day(k2).topics.push(t);save(from,k2)}}
+      if(!k2){need(n);return}
+      if(day(from).topics[i]){const t=day(from).topics.splice(i,1)[0];day(k2).topics.push(t);save(from,k2)}}
     else if(n=g("data-return")){
       const i=+n.dataset.return,from=cur;
       if(day(from).topics[i]){const t=day(from).topics.splice(i,1)[0];day(POOL).topics.push(t);save(from,POOL)}}
+    else if(n=g("data-returnall")){
+      if(arm(n,"ra")&&cur&&cur!==POOL){const all=day(cur).topics.splice(0);day(POOL).topics.push(...all);save(cur,POOL)}}
     else if(g("data-migrate")){migrate()}
   }catch(err){msg="حصل خطأ: "+(err.message||err);render()}
 });
 document.addEventListener("change",e=>{
-  const t=e.target;if(!cur)return;
+  const t=e.target;if(!cur||!canEdit())return;
   if(t.dataset.title!==undefined){day(cur).topics[t.dataset.title].t=t.value;save(cur)}
   else if(t.dataset.note!==undefined){day(cur).topics[t.dataset.note].note=t.value;save(cur)}
 });
