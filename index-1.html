@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>مخطط اجتماع الشباب</title>
+<style>
+:root{--bg:#f7f5f0;--card:#fff;--tx:#1f2430;--mu:#6b7280;--ac:#2f6f6a;--ac2:#e3f0ee;--bd:#e2ded5;--dn:#b42318}
+@media (prefers-color-scheme:dark){:root{--bg:#15181d;--card:#1e232b;--tx:#e8eaee;--mu:#9aa3b0;--ac:#5fb3ab;--ac2:#20343a;--bd:#2f3640;--dn:#f97066}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--tx);font-family:"Segoe UI",Tahoma,"Noto Naskh Arabic",Arial,sans-serif;line-height:1.6}
+.w{max-width:900px;margin:0 auto;padding:16px}
+h1{font-size:1.5rem;margin:8px 0}h2{font-size:1.1rem;margin:22px 0 8px;color:var(--ac)}
+.sub{color:var(--mu);font-size:.9rem;margin-bottom:8px}
+.g{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px}
+.c{background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:12px;cursor:pointer;text-align:start;color:inherit;font:inherit;min-height:84px}
+.c:hover{border-color:var(--ac)}
+.d{font-weight:700;font-size:.95rem}
+.t{margin-top:6px;font-size:.9rem}.t div{padding:2px 0}
+.e{color:var(--mu);font-size:.85rem}
+button.p,button.s{border-radius:8px;border:1px solid var(--ac);padding:6px 12px;font:inherit;cursor:pointer}
+button.p{background:var(--ac);color:#fff}button.s{background:transparent;color:var(--ac)}
+button.x{background:none;border:0;color:var(--dn);cursor:pointer;font:inherit}
+input[type=text],textarea,select{background:var(--bg);color:var(--tx);border:1px solid var(--bd);border-radius:8px;padding:8px;font:inherit}
+input[type=text],textarea{width:100%}
+textarea{min-height:70px}
+.tp{background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:12px;margin:12px 0}
+.tp h3{margin:0 0 8px}.sec{margin-top:10px}.sec b{font-size:.85rem;color:var(--mu)}
+.row{display:flex;gap:6px;margin-top:6px;align-items:center;flex-wrap:wrap}.row input[type=text]{flex:1;min-width:140px;width:auto}
+.im{display:flex;flex-wrap:wrap;gap:8px}.im img{max-width:140px;max-height:110px;border-radius:8px;border:1px solid var(--bd)}
+.li{display:flex;justify-content:space-between;gap:8px;padding:3px 0;border-bottom:1px dashed var(--bd);word-break:break-all}
+a{color:var(--ac)}.msg{color:var(--dn);font-size:.85rem}
+.st{font-size:.8rem;color:var(--mu)}.st.ok{color:var(--ac)}.st.bad{color:var(--dn)}
+</style></head><body><div class="w"><div id="app"></div></div>
+
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script>
+const firebaseConfig={
+  apiKey:"AIzaSyD4q8B3KQBOi9yMd2SLZTzrjJLq_kuCk0E",
+  authDomain:"youthprog-f8b20.firebaseapp.com",
+  projectId:"youthprog-f8b20",
+  storageBucket:"youthprog-f8b20.firebasestorage.app",
+  messagingSenderId:"511442545905",
+  appId:"1:511442545905:web:616c54f8ec4c7f754c8d50"
+};
+
+// ---------- التواريخ: كل خميس من 5 نوفمبر 2026 لمدة 6 شهور ----------
+const dates=[];
+for(let i=0;i<26;i++){const d=new Date(2026,10,5+i*7);dates.push(d)}
+const key=d=>d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
+const fmt=(d,o)=>d.toLocaleDateString("ar-u-nu-latn",o);
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const isUrl=s=>/^https?:\/\//i.test(String(s).trim());
+const lnk=s=>isUrl(s)?`<a href="${esc(s)}" target="_blank" rel="noopener">${esc(s)}</a>`:esc(s);
+
+// ---------- الحالة ----------
+const POOL="_pool";
+let data={},cur=null,msg="",status="connecting",pending=false,db=null;
+const day=k=>data[k]||(data[k]={topics:[]});
+const blank=t=>({t,note:"",vids:[],books:[],imgs:[],files:[]});
+
+try{firebase.initializeApp(firebaseConfig);db=firebase.firestore()}catch(e){status="error";msg="تعذّر الاتصال بـ Firebase: "+(e.message||e)}
+
+function save(...ks){
+  if(db){
+    for(const k of ks){
+      db.collection("meetings").doc(k).set({topics:day(k).topics})
+        .catch(err=>{msg="تعذّر الحفظ: "+(err.code||err.message);render()})
+    }
+  }
+  render()}
+
+function dirty(){return [...document.querySelectorAll("#app input[type=text],#app textarea")].some(el=>el.value!==el.defaultValue)}
+
+if(db){
+  db.collection("meetings").onSnapshot(s=>{
+    data={};s.docs.forEach(d=>{data[d.id]=d.data()});
+    status="ok";msg="";
+    if(dirty()){pending=true}else{pending=false;render()}
+  },err=>{status="error";msg="مشكلة في الاتصال/الصلاحيات: "+(err.code||err.message);render()});
+}
+
+// ---------- الواجهة ----------
+function stat(){return status==="ok"?'<span class="st ok">● متصل — التعديلات بتظهر للكل</span>':status==="error"?'<span class="st bad">● غير متصل</span>':'<span class="st">● جاري الاتصال...</span>'}
+function dayOpts(){return dates.map(d=>`<option value="${key(d)}">${fmt(d,{day:"numeric",month:"short"})} — ${fmt(d,{weekday:"long"})}</option>`).join("")}
+
+function render(){
+  const a=document.getElementById("app");
+  if(cur){a.innerHTML=detail(cur);return}
+  const pool=day(POOL).topics,opts=dayOpts();
+  let h=`<h1>مخطط اجتماع الشباب</h1><div class="sub">كل يوم خميس من نوفمبر 2026 حتى أبريل 2027 — اضغط على أي يوم لإضافة التفاصيل</div>${stat()}`;
+  h+=`<div class="tp"><h3>بنك المواضيع</h3><div class="sub">ضيف هنا كل المواضيع المقترحة، وبعدين وزّعها على أي خميس تحبه</div>`;
+  h+=pool.length?pool.map((t,i)=>`<div class="row"><button class="s" data-poolopen="${i}" style="flex:1;text-align:start">${esc(t.t)}</button><select data-assignsel="${i}">${opts}</select><button class="s" data-assign="${i}">توزيع</button><button class="x" data-poolrm="${i}">حذف</button></div>`).join(""):`<div class="e">لا توجد مواضيع في البنك بعد</div>`;
+  h+=`<div class="row"><input type="text" id="pt" placeholder="اسم موضوع جديد"><button class="p" data-pooladd>إضافة للبنك</button></div></div>`;
+  let m="";
+  for(const d of dates){
+    const mm=fmt(d,{month:"long",year:"numeric"});
+    if(mm!==m){if(m)h+="</div>";m=mm;h+=`<h2>${mm}</h2><div class="g">`}
+    const k=key(d),ts=(data[k]&&data[k].topics)||[];
+    h+=`<button class="c" data-open="${k}"><div class="d">${fmt(d,{weekday:"long",day:"numeric",month:"short"})}</div><div class="t">${ts.length?ts.map(t=>`<div>• ${esc(t.t)}</div>`).join(""):'<span class="e">لم يُحدد موضوع بعد</span>'}</div></button>`}
+  h+="</div>";
+  if(localStorage.getItem("yp")&&db)h+=`<div class="tp"><div class="sub">لقينا بيانات قديمة محفوظة على الجهاز ده.</div><button class="s" data-migrate>نقلها للسحابة</button></div>`;
+  a.innerHTML=h+(msg?`<p class="msg">${esc(msg)}</p>`:"")}
+
+function detail(k){
+  const isPool=k===POOL,ts=day(k).topics,opts=dayOpts();
+  let h=`<button class="s" data-back>→ رجوع للمخطط</button> ${stat()}`;
+  if(isPool)h+=`<h1>بنك المواضيع</h1><div class="sub">جهّز بيانات الموضوع بالكامل هنا، وبعدين وزّعه على أي خميس فيتنقل معاه كل حاجة</div>`;
+  else{const[y,mo,da]=k.split("-").map(Number);h+=`<h1>${fmt(new Date(y,mo-1,da),{weekday:"long",day:"numeric",month:"long",year:"numeric"})}</h1>`}
+  ts.forEach((t,i)=>{
+    const list=(arr,kind,f)=>(arr||[]).map((x,j)=>`<div class="li"><span>${f(x)}</span><button class="x" data-del="${kind}:${i}:${j}">حذف</button></div>`).join("");
+    h+=`<div class="tp"><h3><input type="text" data-title="${i}" value="${esc(t.t)}"></h3>
+    <div class="sec"><b>ملاحظات / تحضير / معلومات</b><textarea data-note="${i}">${esc(t.note||"")}</textarea></div>
+    <div class="sec"><b>روابط فيديوهات</b>${list(t.vids,"vids",lnk)}<div class="row"><input type="text" placeholder="الصق رابط الفيديو" data-in="vids:${i}"><button class="s" data-add="vids:${i}">إضافة</button></div></div>
+    <div class="sec"><b>كتب ومصادر</b>${list(t.books,"books",lnk)}<div class="row"><input type="text" placeholder="اسم الكتاب أو رابط" data-in="books:${i}"><button class="s" data-add="books:${i}">إضافة</button></div></div>
+    <div class="sec"><b>صور</b><div class="im">${(t.imgs||[]).map((x,j)=>`<div>${isUrl(x)?`<a href="${esc(x)}" target="_blank" rel="noopener"><img src="${esc(x)}" alt="" loading="lazy" onerror="this.replaceWith(Object.assign(document.createElement('span'),{textContent:'رابط صورة غير صالح'}))"></a>`:esc(x)}<br><button class="x" data-del="imgs:${i}:${j}">حذف</button></div>`).join("")}</div>
+    <div class="row"><input type="text" placeholder="الصق رابط صورة (jpg/png...)" data-in="imgs:${i}"><button class="s" data-add="imgs:${i}">إضافة</button></div></div>
+    <div class="sec"><b>ملفات Word / PDF</b>${list(t.files,"files",lnk)}<div class="row"><input type="text" placeholder="الصق رابط الملف (Drive, OneDrive...)" data-in="files:${i}"><button class="s" data-add="files:${i}">إضافة</button></div></div>
+    ${isPool?`<div class="row"><span>توزيع على:</span><select data-assignsel="${i}">${opts}</select><button class="s" data-assign="${i}">توزيع</button></div>`:""}
+    <div class="row"><button class="x" data-deltopic="${i}">حذف الموضوع</button></div></div>`});
+  h+=`<div class="tp"><b>إضافة موضوع ${isPool?"للبنك":"مقترح"}</b><div class="row"><input type="text" id="nt" placeholder="اسم الموضوع"><button class="p" data-addtopic>إضافة</button></div></div>`;
+  return h+(msg?`<p class="msg">${esc(msg)}</p>`:"")}
+
+// ---------- الأحداث ----------
+document.addEventListener("click",e=>{
+  try{
+    const g=a=>e.target.closest("["+a+"]");let n;
+    if(n=g("data-open")){cur=n.dataset.open;render();window.scrollTo(0,0)}
+    else if(g("data-back")){cur=null;render()}
+    else if(g("data-addtopic")){const v=document.getElementById("nt").value.trim();if(v){const t=day(cur).topics;t.push(blank(v));save(cur)}}
+    else if(n=g("data-add")){const[kind,i]=n.dataset.add.split(":");const v=document.querySelector(`[data-in="${kind}:${i}"]`).value.trim();if(v){const t=day(cur).topics[i];(t[kind]=t[kind]||[]).push(v);save(cur)}}
+    else if(n=g("data-del")){const[kind,i,j]=n.dataset.del.split(":");day(cur).topics[i][kind].splice(+j,1);save(cur)}
+    else if(n=g("data-deltopic")){if(confirm("حذف الموضوع؟")){day(cur).topics.splice(+n.dataset.deltopic,1);save(cur)}}
+    else if(g("data-pooladd")){const v=document.getElementById("pt").value.trim();if(v){day(POOL).topics.push(blank(v));save(POOL)}}
+    else if(n=g("data-poolopen")){cur=POOL;render();window.scrollTo(0,0)}
+    else if(n=g("data-poolrm")){if(confirm("حذف الموضوع من البنك؟")){day(POOL).topics.splice(+n.dataset.poolrm,1);save(POOL)}}
+    else if(n=g("data-assign")){
+      const i=+n.dataset.assign,k=document.querySelector(`[data-assignsel="${i}"]`).value,t=day(POOL).topics[i];
+      if(t){day(k).topics.push(JSON.parse(JSON.stringify(t)));day(POOL).topics.splice(i,1);if(cur===POOL)cur=null;save(POOL,k)}}
+    else if(g("data-migrate")){migrate()}
+  }catch(err){msg="حصل خطأ: "+(err.message||err);render()}
+});
+document.addEventListener("change",e=>{
+  const t=e.target;if(!cur)return;
+  if(t.dataset.title!==undefined){day(cur).topics[t.dataset.title].t=t.value;save(cur)}
+  else if(t.dataset.note!==undefined){day(cur).topics[t.dataset.note].note=t.value;save(cur)}
+});
+
+function migrate(){
+  let old={};try{old=JSON.parse(localStorage.getItem("yp")||"{}")}catch(e){}
+  const ks=[];
+  for(const k of Object.keys(old)){
+    const add=(old[k].topics||[]).filter(t=>t&&t.t).map(t=>({t:t.t,note:t.note||"",vids:t.vids||[],books:t.books||[],imgs:(t.imgs||[]).filter(x=>typeof x==="string"),files:(t.files||[]).filter(x=>typeof x==="string")}));
+    const have=day(k).topics.map(t=>t.t);
+    const fresh=add.filter(t=>!have.includes(t.t));
+    if(fresh.length){day(k).topics.push(...fresh);ks.push(k)}
+  }
+  if(ks.length)save(...ks);
+  try{localStorage.removeItem("yp")}catch(e){}
+  render()}
+
+render();
+</script></body></html>
