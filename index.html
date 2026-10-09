@@ -102,14 +102,13 @@ function dayOpts(skip){return '<option value="">— اختر اليوم —</opt
 function render(){
   armed=null;
   const a=document.getElementById("app"),ed=canEdit();
-  if(cur&&cur===POOL&&!ed)cur=null;
   if(cur){a.innerHTML=detail(cur,ed);return}
   let h=`<h1>مخطط اجتماع الشباب</h1><div class="sub">كل يوم خميس من نوفمبر 2026 حتى أبريل 2027 — اضغط على أي يوم لعرض التفاصيل</div>${stat()}${authBar()}`;
-  if(ed){
+  {
     const pool=day(POOL).topics,opts=dayOpts();
-    h+=`<div class="tp"><h3>بنك المواضيع</h3><div class="sub">ضيف هنا كل المواضيع المقترحة، وبعدين وزّعها على أي خميس تحبه</div>`;
-    h+=pool.length?pool.map((t,i)=>`<div class="row"><button class="s" data-poolopen="${i}" style="flex:1;text-align:start">${esc(t.t)}</button><select data-assignsel="${i}">${opts}</select><button class="s" data-assign="${i}">توزيع</button><button class="x" data-poolrm="${i}">حذف</button></div>`).join(""):`<div class="e">لا توجد مواضيع في البنك بعد</div>`;
-    h+=`<div class="row"><input type="text" id="pt" placeholder="اسم موضوع جديد"><button class="p" data-pooladd>إضافة للبنك</button></div></div>`;
+    h+=`<div class="tp"><h3>بنك المواضيع</h3><div class="sub">${ed?"ضيف هنا كل المواضيع المقترحة، وبعدين وزّعها على أي خميس تحبه":"مواضيع مقترحة لم يُحدد لها يوم بعد — اضغط على أي موضوع لعرض تفاصيله"}</div>`;
+    h+=pool.length?pool.map((t,i)=>!ed?`<div class="row"><button class="s" data-poolopen="${i}" style="flex:1;text-align:start">${esc(t.t)}</button></div>`:`<div class="row"><button class="s" data-poolopen="${i}" style="flex:1;text-align:start">${esc(t.t)}</button><select data-assignsel="${i}">${opts}</select><button class="s" data-assign="${i}">توزيع</button><button class="x" data-poolrm="${i}">حذف</button></div>`).join(""):`<div class="e">لا توجد مواضيع في البنك بعد</div>`;
+    h+=(ed?`<div class="row"><input type="text" id="pt" placeholder="اسم موضوع جديد"><button class="p" data-pooladd>إضافة للبنك</button></div>`:"")+`</div>`;
   }
   let m="";
   for(const d of dates){
@@ -124,7 +123,7 @@ function render(){
 function detail(k,ed){
   const isPool=k===POOL,ts=day(k).topics,opts=dayOpts(k);
   let h=`<button class="s" data-back>→ رجوع للمخطط</button> ${stat()}${authBar()}`;
-  if(isPool)h+=`<h1>بنك المواضيع</h1><div class="sub">جهّز بيانات الموضوع بالكامل هنا، وبعدين وزّعه على أي خميس فيتنقل معاه كل حاجة</div>`;
+  if(isPool)h+=`<h1>بنك المواضيع</h1><div class="sub">${ed?"جهّز بيانات الموضوع بالكامل هنا، وبعدين وزّعه على أي خميس فيتنقل معاه كل حاجة":"مواضيع مقترحة لم يُحدد لها يوم بعد"}</div>`;
   else{const[y,mo,da]=k.split("-").map(Number);h+=`<h1>${fmt(new Date(y,mo-1,da),{weekday:"long",day:"numeric",month:"long",year:"numeric"})}</h1>`}
   if(!ts.length&&!ed)h+=`<div class="e">لم يُحدد موضوع لهذا اليوم بعد</div>`;
   ts.forEach((t,i)=>{
@@ -164,6 +163,7 @@ document.addEventListener("click",e=>{
     const g=a=>e.target.closest("["+a+"]");let n;
     if(n=g("data-open")){cur=n.dataset.open;msg="";render();window.scrollTo(0,0)}
     else if(g("data-back")){cur=null;msg="";render()}
+    else if(g("data-poolopen")){cur=POOL;render();window.scrollTo(0,0)}
     else if(g("data-login")){login()}
     else if(g("data-logout")){auth.signOut()}
     else if(!canEdit()){return}
@@ -172,7 +172,6 @@ document.addEventListener("click",e=>{
     else if(n=g("data-del")){const[kind,i,j]=n.dataset.del.split(":");day(cur).topics[i][kind].splice(+j,1);save(cur)}
     else if(n=g("data-deltopic")){if(arm(n,"d"+n.dataset.deltopic)){day(cur).topics.splice(+n.dataset.deltopic,1);save(cur)}}
     else if(g("data-pooladd")){const v=document.getElementById("pt").value.trim();if(v){day(POOL).topics.push(blank(v));save(POOL)}}
-    else if(n=g("data-poolopen")){cur=POOL;render();window.scrollTo(0,0)}
     else if(n=g("data-poolrm")){if(arm(n,"p"+n.dataset.poolrm)){day(POOL).topics.splice(+n.dataset.poolrm,1);save(POOL)}}
     else if(n=g("data-assign")){
       const i=+n.dataset.assign,k=document.querySelector(`[data-assignsel="${i}"]`).value,t=day(POOL).topics[i];
